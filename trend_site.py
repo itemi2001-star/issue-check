@@ -161,7 +161,8 @@ header h1{margin:0;font-size:26px}header p{margin:6px 0 0;color:var(--sub);font-
 .hours button.on{background:var(--accent);color:#fff;border-color:var(--accent)}.hours button:disabled{opacity:.35;cursor:default}
 .hero{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:14px 0}
 .hero .k{font-size:22px;font-weight:800;margin:4px 0 8px}.hero li{margin:4px 0;font-size:14px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}@media(max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}}
+.wrap>*{min-width:0}.hours{max-width:100%}.briefs{grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr))!important}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
 .card h2{font-size:16px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
 .dot{width:22px;height:22px;border-radius:6px;color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
