@@ -97,7 +97,10 @@ def collect(db):
 def render(db):
     os.makedirs(SITE_DIR, exist_ok=True)
     data = json.dumps({"days": db["days"], "briefs": db["briefs"],
-                       "generated": now_kst().isoformat(timespec="minutes")}, ensure_ascii=False)
+                       "generated": now_kst().isoformat(timespec="seconds")}, ensure_ascii=False)
+    # 페이지가 1분마다 이 파일만 다시 받아서 새로고침 없이 화면을 바꿈
+    with open(os.path.join(SITE_DIR, "data.json"), "w", encoding="utf-8") as f:
+        f.write(data)
     data = data.replace("</", "<\\/")   # <script> 안에 안전하게 넣기
     page = HTML.replace("__TITLE__", SITE_TITLE).replace("__DATA__", data)
     with open(os.path.join(SITE_DIR, "index.html"), "w", encoding="utf-8") as f:
@@ -140,7 +143,6 @@ HTML = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="600">
 <title>__TITLE__ — 지금 뜨는 검색어와 이유</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--text:#16181d;--sub:#6b7280;--line:#e5e7eb;--accent:#2f6fed;
@@ -179,12 +181,15 @@ h3.sec{margin:28px 0 4px;font-size:18px}.secsub{color:var(--sub);font-size:13px;
 .brief .meta{color:var(--sub);font-size:12px;margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
 .long li{cursor:default}footer{color:var(--sub);font-size:12px;margin-top:36px;text-align:center}
 .hl{outline:2px solid var(--accent)}
+.live{color:#e5484d;background:rgba(229,72,77,.12)}.live i{display:inline-block;width:7px;height:7px;border-radius:50%;background:#e5484d;margin-right:5px;vertical-align:1px;animation:pulse 1.6s infinite}
+@keyframes pulse{0%{opacity:1}50%{opacity:.25}100%{opacity:1}}
+.hours button[title]{position:relative}.flash{animation:flash 1.2s}@keyframes flash{from{background:rgba(47,111,237,.18)}to{background:transparent}}
 </style>
 </head>
 <body>
 <div class="wrap">
 <header>
-  <span class="badge">10분마다 갱신</span><span class="badge">네이버 · 구글</span>
+  <span class="badge live"><i></i>실시간</span><span class="badge">10분마다 갱신</span><span class="badge">네이버 · 구글</span>
   <h1>__TITLE__</h1>
   <p>네이버 실시간 검색어(시그널)와 구글 트렌드 급상승 검색어를 1시간 단위로 기록하고, 검색어마다 관련 뉴스를 붙였어요.</p>
 </header>
@@ -209,11 +214,28 @@ h3.sec{margin:28px 0 4px;font-size:18px}.secsub{color:var(--sub);font-size:13px;
 </div>
 <script id="data" type="application/json">__DATA__</script>
 <script>
-const D = JSON.parse(document.getElementById('data').textContent);
-const days = Object.keys(D.days).sort();
+let D = JSON.parse(document.getElementById('data').textContent);
+let days = Object.keys(D.days).sort();
 const $ = id => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); kids.forEach(k => e.append(k)); return e; };
 let day = days[days.length - 1], hour = null;
+let follow = true;   // 최신 시간대를 보고 있으면 새 데이터가 오면 자동으로 따라감
+const latestHour = d => { const hs = Object.keys(D.days[d] || {}).sort(); return hs[hs.length - 1]; };
+function ago() {
+  const s = Math.max(0, Math.round((Date.now() - new Date(D.generated).getTime()) / 1000));
+  const t = s < 60 ? '방금 전' : s < 3600 ? Math.floor(s / 60) + '분 전' : Math.floor(s / 3600) + '시간 전';
+  $('upd').textContent = '· 업데이트 ' + D.generated.slice(11, 16) + ' (' + t + ')';
+}
+async function poll() {
+  try {
+    const n = await (await fetch('data.json?t=' + Date.now(), {cache: 'no-store'})).json();
+    if (n.generated === D.generated) return;
+    D = n; days = Object.keys(D.days).sort();
+    if (follow) { day = days[days.length - 1]; hour = null; }
+    render();
+    document.querySelectorAll('.card,.hero').forEach(c => { c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); });
+  } catch (e) { /* 파일로 직접 열었을 때 등은 무시 */ }
+}
 
 function prevSlot(d, h) {
   const hs = Object.keys(D.days[d] || {}).sort().filter(x => x < h);
@@ -265,8 +287,9 @@ function render() {
   $('prev').disabled = days.indexOf(day) <= 0; $('next').disabled = days.indexOf(day) >= days.length - 1;
   const hb = $('hours'); hb.replaceChildren();
   for (let i = 0; i < 24; i++) { const h = String(i).padStart(2, '0');
-    const bt = el('button', {textContent: i + '시', disabled: !slots[h], className: h === hour ? 'on' : ''});
-    bt.onclick = () => { hour = h; render(); }; hb.append(bt); }
+    const bt = el('button', {textContent: i + '시', disabled: !slots[h], className: h === hour ? 'on' : '',
+      title: slots[h] ? '' : '이 시간대는 기록이 없어요'});
+    bt.onclick = () => { hour = h; follow = day === days[days.length - 1] && h === latestHour(day); render(); }; hb.append(bt); }
   const s = slots[hour] || {naver: [], google: [], t: ''}, prev = prevSlot(day, hour);
   $('nWhen').textContent = $('gWhen').textContent = `${day} ${hour}시 기록 (마지막 확인 ${s.t})`;
   list('nList', s.naver, prev, 'naver', () => '');
@@ -290,12 +313,15 @@ function render() {
   $('sKw').textContent = Object.keys(agg).length;
   $('sBr').textContent = Object.keys(agg).filter(k => D.briefs[k] && D.briefs[k].news).length;
   $('sDays').textContent = days.length + '일';
-  $('upd').textContent = '· 업데이트 ' + D.generated.slice(11, 16);
+  ago();
   $('foot').textContent = '순위 출처: 시그널(네이버 앱 기준), Google 트렌드 · 기사 저작권은 각 언론사에 있어요.';
 }
-$('prev').onclick = () => { day = days[days.indexOf(day) - 1]; hour = null; render(); };
-$('next').onclick = () => { day = days[days.indexOf(day) + 1]; hour = null; render(); };
+$('prev').onclick = () => { day = days[days.indexOf(day) - 1]; hour = null; follow = false; render(); };
+$('next').onclick = () => { day = days[days.indexOf(day) + 1]; hour = null; follow = day === days[days.length - 1]; render(); };
 if (days.length) render(); else $('hero').textContent = '아직 수집된 기록이 없어요. python trend_site.py 를 실행해 주세요.';
+setInterval(poll, 60 * 1000);   // 1분마다 새 순위가 있는지 확인
+setInterval(ago, 20 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 </script>
 </body>
 </html>
