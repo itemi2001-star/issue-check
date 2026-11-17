@@ -18,6 +18,8 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -38,6 +40,15 @@ jobs:
             git pull -q --rebase || true
             git push -q
           fi
+      - name: Cloudflare Pages 업로드 (issue-check.pages.dev)
+        if: env.CF_TOKEN != ''
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ffaa19018f74ae27bb594cf3259c7e58
+        run: |
+          npx --yes wrangler@3 pages project create issue-check --production-branch=main || true
+          npx --yes wrangler@3 pages deploy site --project-name=issue-check --branch=main --commit-dirty=true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
